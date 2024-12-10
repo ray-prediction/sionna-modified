@@ -355,7 +355,7 @@ class SolverPaths(SolverBase):
     """
 
 
-    def trace_paths(self, max_depth, method, num_samples, los, reflection,
+    def trace_paths(self, max_depth, method, num_samples, custom_directions, los, reflection,
                     diffraction, scattering, ris, scat_keep_prob,
                     edge_diffraction):
         # pylint: disable=line-too-long
@@ -541,7 +541,7 @@ class SolverPaths(SolverBase):
             # hit_points : [max_depth, num_sources, num_paths_per_source, 3]
             #     Coordinates of the intersection points.
             output = self._list_candidates_fibonacci(max_depth,
-                                        sources, num_samples, los, reflection,
+                                        sources, num_samples, custom_directions, los, reflection,
                                         scattering, ris_objects)
             candidates = output[0]
             los_prim = output[1]
@@ -1172,7 +1172,7 @@ class SolverPaths(SolverBase):
 
         return all_candidates, los_candidates
 
-    def _list_candidates_fibonacci(self, max_depth, sources, num_samples,
+    def _list_candidates_fibonacci(self, max_depth, sources, num_samples, custom_directions,
                                    los, reflection, scattering, ris_objects):
         r"""
         Generate potential candidate paths made of reflections only and the
@@ -1257,17 +1257,22 @@ class SolverPaths(SolverBase):
             # Keep track of which paths are still active
             active = dr.full(mask_t, True, num_samples)
 
-            # Initial ray: Arranged in a Fibonacci lattice on the unit
-            # sphere.
-            # [samples_per_source, 3]
-            lattice = fibonacci_lattice(samples_per_source, self._rdtype)
-            sampled_d = tf.tile(lattice, [num_sources, 1])
-            sampled_d = self._mi_point2_t(sampled_d)
-            sampled_d = mi.warp.square_to_uniform_sphere(sampled_d)
+            print(f"Using provided directions instead of fib: {custom_directions is None}")
+            if custom_directions is None:
+                # Initial ray: Arranged in a Fibonacci lattice on the unit
+                # sphere.
+                # [samples_per_source, 3]
+                lattice = fibonacci_lattice(samples_per_source, self._rdtype)
+                sampled_d = tf.tile(lattice, [num_sources, 1])
+                sampled_d = self._mi_point2_t(sampled_d)
+                sampled_d = mi.warp.square_to_uniform_sphere(sampled_d)
+            else:
+                sampled_d = custom_directions
+                
             source_i = dr.linspace(self._mi_scalar_t, 0, num_sources,
-                                   num=num_samples, endpoint=False)
+                                    num=num_samples, endpoint=False)
             source_i = mi.Int32(source_i)
-            sources_dr = self._mi_tensor_t(sources)
+            sources_dr = self._mi_tensor_t(sources)    
             ray = mi.Ray3f(
                 o=dr.gather(self._mi_vec_t, sources_dr.array, source_i),
                 d=sampled_d,
@@ -1278,6 +1283,7 @@ class SolverPaths(SolverBase):
                 # Intersect ray against the scene to find the next hitted
                 # primitive
                 si = self._mi_scene.ray_intersect(ray, active)
+                print(f"{si.shape}")
                 # Intersect with the RIS
                 _, t_ris, _ = self._ris_intersect(ris_objects, ray, active)
 
@@ -1298,6 +1304,7 @@ class SolverPaths(SolverBase):
                 # Record the hit point
                 hit_p = ray.o + si.t*ray.d
                 hit_points.append(hit_p)
+                print(hit_points)
 
                 # Prepare the next interaction, assuming purely specular
                 # reflection

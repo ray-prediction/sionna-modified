@@ -513,7 +513,8 @@ class Scene:
             raise TypeError(msg)
 
 
-    def trace_paths(self, max_depth=3, method="fibonacci", num_samples=int(1e6),
+    def trace_paths(self, max_depth=3, method="fibonacci", num_samples=int(1e6), 
+                    custom_directions=None,
                     los=True, reflection=True, diffraction=False,
                     scattering=False, ris=True, scat_keep_prob=0.001,
                     edge_diffraction=False, check_scene=True):
@@ -654,6 +655,7 @@ class Scene:
         paths = self._solver_paths.trace_paths(max_depth,
                                                method=method,
                                                num_samples=num_samples,
+                                               custom_directions=custom_directions,
                                                los=los, reflection=reflection,
                                                diffraction=diffraction,
                                                scattering=scattering,
@@ -775,7 +777,7 @@ class Scene:
         return paths
 
     def compute_paths(self, max_depth=3, method="fibonacci",
-                      num_samples=int(1e6), los=True, reflection=True,
+                      num_samples=int(1e6), custom_directions=None, los=True, reflection=True,
                       diffraction=False, scattering=False, ris=True,
                       scat_keep_prob=0.001, edge_diffraction=False,
                       check_scene=True, scat_random_phases=True,
@@ -955,7 +957,7 @@ class Scene:
         """
 
         # Trace the paths
-        traced_paths = self.trace_paths(max_depth, method, num_samples, los,
+        traced_paths = self.trace_paths(max_depth, method, num_samples, custom_directions, los,
             reflection, diffraction, scattering, ris, scat_keep_prob,
             edge_diffraction, check_scene)
 
