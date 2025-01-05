@@ -11,5 +11,5 @@ RUN pip install --upgrade ipykernel
 RUN pip install --upgrade jupyterlab
 RUN rm -R /tf/* 
 # RUN cp -r /tmp/examples/ /tmp/experiments /tf
-# RUN rm -R /tmp
+RUN rm -R /tmp
 RUN chmod 777 -R /tf
