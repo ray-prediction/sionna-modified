@@ -544,6 +544,22 @@ class SolverPaths(SolverBase):
             los_prim = output[1]
             candidates_scat = output[2]
             hit_points = output[3]
+        elif method[0] == 'custom':
+            output = self._list_candidates_fibonacci(max_depth,
+                                        sources, num_samples, los, reflection,
+                                        scattering, ris_objects, angle_pdf=method[1])
+            candidates = output[0]
+            los_prim = output[1]
+            candidates_scat = output[2]
+            hit_points = output[3]
+        elif method[0] == 'solution':
+            output = self._list_candidates_fibonacci(max_depth,
+                                        sources, num_samples, los, reflection,
+                                        scattering, ris_objects, solution_angles=method[1])
+            candidates = output[0]
+            los_prim = output[1]
+            candidates_scat = output[2]
+            hit_points = output[3]
 
         else:
             raise ValueError(f"Unknown method '{method}'")
@@ -1170,7 +1186,7 @@ class SolverPaths(SolverBase):
         return all_candidates, los_candidates
 
     def _list_candidates_fibonacci(self, max_depth, sources, num_samples,
-                                   los, reflection, scattering, ris_objects):
+                                   los, reflection, scattering, ris_objects, angle_pdf=None, solution_angles=None):
         r"""
         Generate potential candidate paths made of reflections only and the
         LoS. Rays direction are arranged in a Fibonacci lattice on the unit
@@ -1254,15 +1270,61 @@ class SolverPaths(SolverBase):
             # Keep track of which paths are still active
             active = dr.full(mask_t, True, num_samples)
 
+            # Extra steps required if sampling from pdf is required
+            # This is really disgusting and I need to fix it
+            if angle_pdf is None and solution_angles is None:
+                lattice = fibonacci_lattice(samples_per_source, self._rdtype)
+            elif angle_pdf is not None:
+                remainder = 0
+                num_rows = len(angle_pdf)
+                num_cols = len(angle_pdf[0])
+
+                pdf_points = []
+                for i in range(num_rows):
+                    for j in range(num_cols):
+                        bin_width = samples_per_source * angle_pdf[i][j] + remainder
+                        remainder = bin_width - int(bin_width)
+                        # print(remainder)
+                        bin_samples = int(bin_width)
+                    
+                        if bin_samples > 1: 
+                            bin_lattice = fibonacci_lattice(bin_samples, self._rdtype)
+                            pdf_points.append(bin_lattice + [i, j])
+
+                        elif bin_samples == 1:
+                            bin_lattice = tf.constant([[0.5, 0.5]], self._rdtype)
+                            pdf_points.append(bin_lattice + [i, j])
+                        # print("\n")
+
+                lattice = tf.concat(pdf_points, axis=0) 
+
+                if lattice.shape[0] < samples_per_source:
+                    bin_samples += 1
+
+                    if bin_samples > 1: 
+                        bin_lattice = fibonacci_lattice(bin_samples, self._rdtype)
+                        pdf_points[-1] = bin_lattice + [i, j]
+
+                    elif bin_samples == 1:
+                        bin_lattice = tf.constant([[0.5, 0.5]], self._rdtype)
+                        pdf_points[-1] = bin_lattice + [i, j]
+
+                lattice = tf.concat(pdf_points, axis=0) / [num_rows, num_cols]
+
+
             # Initial ray: Arranged in a Fibonacci lattice on the unit
             # sphere.
             # [samples_per_source, 3]
-            lattice = fibonacci_lattice(samples_per_source, self._rdtype)
-            sampled_d = tf.tile(lattice, [num_sources, 1])
-            sampled_d = self._mi_point2_t(sampled_d)
-            sampled_d = mi.warp.square_to_uniform_sphere(sampled_d)
+            if solution_angles is None:
+                sampled_d = tf.tile(lattice, [num_sources, 1])
+                sampled_d = self._mi_point2_t(sampled_d)
+                sampled_d = mi.warp.square_to_uniform_sphere(sampled_d)
+            else:
+                sampled_d = tf.constant(solution_angles, self._rdtype)
+                print(sampled_d)
+
             source_i = dr.linspace(self._mi_scalar_t, 0, num_sources,
-                                   num=num_samples, endpoint=False)
+                    num=num_samples, endpoint=False)
             source_i = mi.Int32(source_i)
             sources_dr = self._mi_tensor_t(sources)
             ray = mi.Ray3f(
@@ -1275,6 +1337,7 @@ class SolverPaths(SolverBase):
                 # Intersect ray against the scene to find the next hitted
                 # primitive
                 si = self._mi_scene.ray_intersect(ray, active)
+                print(si)
                 # Intersect with the RIS
                 _, t_ris, _ = self._ris_intersect(ris_objects, ray, active)
 
