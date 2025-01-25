@@ -638,6 +638,50 @@ def fibonacci_lattice(num_points, dtype=tf.float32):
 
     return points
 
+def fibonacci_lattice2(num_points, episilon, dtype=tf.float32):
+    golden_ratio = (1.+tf.sqrt(tf.cast(5., tf.float64)))/2.
+    ns = tf.range(episilon, num_points, dtype=tf.float64)
+
+    x = ns/golden_ratio
+    x = x - tf.floor(x)
+    y = ns/(num_points-1 + 2 * episilon)
+    points = tf.stack([x,y], axis=1)
+
+    points = tf.cast(points, dtype)
+
+    return points
+
+def pdf_to_lattice(angle_pdf, num_rays):
+    bins = []
+    bin_rows = len(angle_pdf)
+    bin_cols = len(angle_pdf[0])
+    # rays_per_bin = num_rays / (bin_rows * bin_cols)
+
+    # if rays_per_bin % 1 != 0:
+    #     raise ValueError('num_rays should be multiple of number of cells of angle_pdf')
+
+    remainder = 0
+
+    for i in range(bin_rows):
+        for j in range(bin_cols):
+            bin_width = num_rays * angle_pdf[i][j] + remainder
+            remainder = bin_width - int(bin_width)
+
+            # floating point error hack
+            if remainder % 1 >= 0.9999999999:
+                remainder = int(remainder) + 1
+
+            bin_samples = int(bin_width)
+
+            if bin_samples > 0:
+                lattice = fibonacci_lattice2(bin_samples, 0.5) + [i, j]
+                bins.append(lattice)
+
+    lattice = tf.concat(bins, axis=0) / [bin_rows, bin_cols]
+    print(remainder)
+    print(lattice.shape)
+    return lattice
+
 def cot(x):
     """
     Cotangens function

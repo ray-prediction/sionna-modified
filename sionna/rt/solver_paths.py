@@ -19,7 +19,7 @@ from .paths import Paths
 from .utils import dot, phi_hat, theta_hat, theta_phi_from_unit_vec,\
     normalize, moller_trumbore, component_transform, mi_to_tf_tensor,\
         compute_field_unit_vectors, reflection_coefficient, fibonacci_lattice,\
-            cot, cross, sign, rotation_matrix, acos_diff
+            cot, cross, sign, rotation_matrix, acos_diff, pdf_to_lattice
 from .solver_base import SolverBase
 from .scattering_pattern import ScatteringPattern
 
@@ -1275,41 +1275,7 @@ class SolverPaths(SolverBase):
             if angle_pdf is None and solution_angles is None:
                 lattice = fibonacci_lattice(samples_per_source, self._rdtype)
             elif angle_pdf is not None:
-                remainder = 0
-                num_rows = len(angle_pdf)
-                num_cols = len(angle_pdf[0])
-
-                pdf_points = []
-                for i in range(num_rows):
-                    for j in range(num_cols):
-                        bin_width = samples_per_source * angle_pdf[i][j] + remainder
-                        remainder = bin_width - int(bin_width)
-                        # print(remainder)
-                        bin_samples = int(bin_width)
-                    
-                        if bin_samples > 1: 
-                            bin_lattice = fibonacci_lattice(bin_samples, self._rdtype)
-                            pdf_points.append(bin_lattice + [i, j])
-
-                        elif bin_samples == 1:
-                            bin_lattice = tf.constant([[0.5, 0.5]], self._rdtype)
-                            pdf_points.append(bin_lattice + [i, j])
-                        # print("\n")
-
-                lattice = tf.concat(pdf_points, axis=0) 
-
-                if lattice.shape[0] < samples_per_source:
-                    bin_samples += 1
-
-                    if bin_samples > 1: 
-                        bin_lattice = fibonacci_lattice(bin_samples, self._rdtype)
-                        pdf_points[-1] = bin_lattice + [i, j]
-
-                    elif bin_samples == 1:
-                        bin_lattice = tf.constant([[0.5, 0.5]], self._rdtype)
-                        pdf_points[-1] = bin_lattice + [i, j]
-
-                lattice = tf.concat(pdf_points, axis=0) / [num_rows, num_cols]
+                lattice = pdf_to_lattice(angle_pdf, samples_per_source)
 
 
             # Initial ray: Arranged in a Fibonacci lattice on the unit
@@ -1321,7 +1287,6 @@ class SolverPaths(SolverBase):
                 sampled_d = mi.warp.square_to_uniform_sphere(sampled_d)
             else:
                 sampled_d = tf.constant(solution_angles, self._rdtype)
-                print(sampled_d)
 
             source_i = dr.linspace(self._mi_scalar_t, 0, num_sources,
                     num=num_samples, endpoint=False)
@@ -1337,7 +1302,7 @@ class SolverPaths(SolverBase):
                 # Intersect ray against the scene to find the next hitted
                 # primitive
                 si = self._mi_scene.ray_intersect(ray, active)
-                print(si)
+
                 # Intersect with the RIS
                 _, t_ris, _ = self._ris_intersect(ris_objects, ray, active)
 
